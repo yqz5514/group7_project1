@@ -1,0 +1,208 @@
+---
+title: "Andy's EDA"
+author: "Andy Christian"
+date: "3/4/2022"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = F, results = "hide", message = F)
+options(scientific=T, digits = 3) 
+
+library(tidyverse)
+library(ezids)
+```
+
+# 1. Prepare Data
+
+### 1.1 Loading data sets
+```{r}
+#Main data set
+churn_df <- data.frame(read_csv('Data Files/Telco_customer_churn.csv', col_types=cols()))
+
+#additional data set
+churn_status_df <- data.frame(read_csv('Data Files/Telco_customer_churn_status.csv', col_types = cols()))
+churn_services_df <- data.frame(read_csv('Data Files/Telco_customer_churn_services.csv', col_types = cols()))
+
+```
+data set `churn_df` loaded...  
+data set `churn_status_df` loaded...  
+data set `churn_services_df` loaded...
+
+### 1.2 Join data sets
+```{r}
+#Filter columns to join from status_df
+status_join <- churn_status_df %>%
+  select(c(Customer.ID, Satisfaction.Score, Churn.Category))
+#status_join
+
+#Filer columns to join from services)df
+service_join <- churn_services_df %>%
+  select(c(Customer.ID, Avg.Monthly.Long.Distance.Charges, Avg.Monthly.GB.Download, Unlimited.Data, Total.Extra.Data.Charges))
+#service_join
+
+#Join status with churn
+joined_churn_df <- merge(churn_df, status_join, by.x="CustomerID", by.y="Customer.ID")
+#head(joined_churn_df)
+
+#Join service with churn
+joined_churn_df <- merge(joined_churn_df, service_join, by.x="CustomerID", by.y="Customer.ID")
+#head(joined_churn_df)
+
+```
+data sets joined...
+
+### 1.3 Summary of data set structure
+```{r results='markup'}
+str(joined_churn_df)
+```
+
+### 1.4 Display joined data set
+```{r results='markup'}
+xkabledplyhead(joined_churn_df, title = "Churn Data Set")
+```
+
+# 2. Examine Data
+```{r}
+#Create updated xkable_summary function to delete unwatned text
+xkablesum_updated <- function (df, title = "Table: Statistics summary.", digits = 4, 
+          pos = "left", bso = "striped") 
+{
+    s = summary(df)
+    
+    # Including RE NA's strip
+    # Needed to add a dim check because incuding NA strip when no NA row made a new 7th row with text Min.: 
+    if (dim(s)[1] == 6) {
+      strip_vector = c("Min.\\s*:\\s*", "1st Qu.\\s*:\\s*", "Median\\s*:\\s*", "Mean\\s*:\\s*", 
+                       "3rd Qu.\\s*:\\s*", "Max.\\s*:\\s*")
+    }
+    # NA's strip RE added here
+    else if (dim(s)[1] == 7) {
+      strip_vector = c("Min.\\s*:\\s*", "1st Qu.\\s*:\\s*", "Median\\s*:\\s*", "Mean\\s*:\\s*", 
+                       "3rd Qu.\\s*:\\s*", "Max.\\s*:\\s*", "NA's\\s*:\\s*")
+    }
+    
+    # Made s = apply() -- without, didn't apply changes to table
+    s <- apply(s, 2, function(x) stringr::str_remove_all(x, strip_vector))
+    
+    # Made s = apply()
+    s <- apply(s, 2, function(x) stringr::str_trim(x, "right"))
+    colnames(s) <- stringr::str_trim(colnames(s))
+    
+    if (dim(s)[1] == 6) {
+        rownames(s) <- c("Min", "Q1", "Median", 
+                         "Mean", "Q3", "Max")
+    }
+    else if (dim(s)[1] == 7) {
+        rownames(s) <- c("Min", "Q1", "Median", 
+                         "Mean", "Q3", "Max", "NA")
+    }
+    xkabledply(s, title = title, digits = digits, pos = pos, 
+               bso = bso)
+}
+
+```
+
+### 2.1 Examine reasons for customers leaving
+```{r}
+joined_churn_df %>%
+  filter(!is.na(Churn.Category)) %>%
+  ggplot() +
+  geom_bar(mapping=aes(x=Churn.Category)) +
+  labs(title='Reasons for Leaving by Answer Category', x=('Category'), y=('Count')) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+joined_churn_df %>%
+  filter(!is.na(Churn.Category)) %>%
+  ggplot() +
+  geom_bar(mapping=aes(y=Churn.Reason)) +
+  labs(title='Reasons for Leaving by Answer', y=('Reason'), x=('Count')) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+-A competitor's offerings was the most common reason customer's left the company.  
+-Of the specific answers given there is contiuous data in the data set for the following:
+
+* dissatisfaction  
+* monthly price  
+* monthly long distance charges  
+* total extra data charges  
+* monthly GD downloads  
+
+-Of the specific answers given there is categorical data in the data set for the following:  
+
+* amount of data (unlimited)  
+* speed of download (internet service type)
+
+### 2.2 Baisc summary of continuous variables
+```{r results='markup'}
+joined_churn_df %>%
+  select(c(Tenure.Months, Monthly.Charges, Avg.Monthly.Long.Distance.Charges, Total.Extra.Data.Charges, Avg.Monthly.GB.Download, Satisfaction.Score)) %>%
+  xkablesum_updated(title='Summary Statistics for Churn Data Set (ALL)')
+
+joined_churn_df %>%
+  filter(Churn.Value == 1) %>%
+  select(c(Tenure.Months, Monthly.Charges, Avg.Monthly.Long.Distance.Charges, Total.Extra.Data.Charges, Avg.Monthly.GB.Download, Satisfaction.Score)) %>%
+  xkablesum_updated(title='Summary Statistics for Churn Data Set (Left)')
+
+joined_churn_df %>%
+  filter(Churn.Value == 0) %>%
+  select(c(Tenure.Months, Monthly.Charges, Avg.Monthly.Long.Distance.Charges, Total.Extra.Data.Charges, Avg.Monthly.GB.Download, Satisfaction.Score)) %>%
+  xkablesum_updated(title='Summary Statistics for Churn Data Set (Stayed)')
+```
+
+**TO DO**
+
+*Graphs of continuous variables*
+
+### 2.3 Basic graphs of continuous variables
+
+#### Tenure in Months
+
+#### Monthly Charges
+
+#### Monthly Long-Distance Charges
+
+#### Total Extra Data Charges
+
+#### Monthly Avg. GB Download 
+
+#### Satisfaction Score
+
+**based on summary table, my guess would be that only**
+
+* [tenure]{.underline}
+* [monthly charges]{.underline} and
+* [satisfaction score]{.underline} 
+
+**are different between churn and non-churn**
+
+### 2.4 Basic Graphs (Frequency) of the Categorical Data
+
+#### Unlimited Data
+
+#### Internet Service Type
+
+#### Contract Type
+
+#### Senior
+
+**will there be obvious visual indication of differences in these categorical variables between churn and non-churn?**
+
+# 3. Smart Questions
+
+### 3.1 What are the actual differences between the churn and non-churn categories?
+
+* Will requires 2 sample t-tests for continous variables
+* will require chisqr Goodness of Fit test for categorical variables
+
+### 3.2 What is the "Difference Profile" between churn and non-churn customers?
